@@ -1,5 +1,5 @@
 /* *************************************************************
-   Encoder driver function definitions - ESP32-S3 version
+    Encoder driver function definitions - ESP32-S3 version
    ************************************************************ */
 
 #pragma once
