@@ -1,20 +1,28 @@
 /* *************************************************************
-   Encoder driver function definitions - by James Nugen
+   Encoder driver function definitions - ESP32-S3 version
    ************************************************************ */
-   
-   
-#ifdef ARDUINO_ENC_COUNTER
-  //below can be changed, but should be PORTD pins; 
-  //otherwise additional changes in the code are required
-  #define LEFT_ENC_PIN_A PD2  //pin 2
-  #define LEFT_ENC_PIN_B PD3  //pin 3
-  
-  //below can be changed, but should be PORTC pins
-  #define RIGHT_ENC_PIN_A PC4  //pin A4
-  #define RIGHT_ENC_PIN_B PC5   //pin A5
-#endif
-   
+
+#pragma once
+
+// Handle up to 4 motors
+#define ENC_M1 0
+#define ENC_M2 1
+#define ENC_M3 2
+#define ENC_M4 3
+
+// Define pins from your main code
+#define ENCA1 15
+#define ENCB1 16
+
+#define ENCA2 2
+#define ENCB2 1
+
+#define ENCA3 17
+#define ENCB3 18
+
+#define ENCA4 3
+#define ENCB4 8
+
 long readEncoder(int i);
 void resetEncoder(int i);
 void resetEncoders();
-

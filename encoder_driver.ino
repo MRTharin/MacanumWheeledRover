@@ -1,82 +1,126 @@
 /* *************************************************************
-   Encoder definitions
-   
-   Add an "#ifdef" block to this file to include support for
-   a particular encoder board or library. Then add the appropriate
-   #define near the top of the main ROSArduinoBridge.ino file.
-   
+   Encoder driver - ESP32-S3 4-encoder version
    ************************************************************ */
-   
+
 #ifdef USE_BASE
 
-#ifdef ROBOGAIA
-  /* The Robogaia Mega Encoder shield */
-  #include "MegaEncoderCounter.h"
+// =====================
+// Encoder counters
+// =====================
+volatile long pos1 = 0;
+volatile long pos2 = 0;
+volatile long pos3 = 0;
+volatile long pos4 = 0;
 
-  /* Create the encoder shield object */
-  MegaEncoderCounter encoders = MegaEncoderCounter(4); // Initializes the Mega Encoder Counter in the 4X Count mode
-  
-  /* Wrap the encoder reading function */
-  long readEncoder(int i) {
-    if (i == LEFT) return encoders.YAxisGetCount();
-    else return encoders.XAxisGetCount();
-  }
+// =====================
+// Mutex for each encoder
+// =====================
+portMUX_TYPE mux1 = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE mux2 = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE mux3 = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE mux4 = portMUX_INITIALIZER_UNLOCKED;
 
-  /* Wrap the encoder reset function */
-  void resetEncoder(int i) {
-    if (i == LEFT) return encoders.YAxisReset();
-    else return encoders.XAxisReset();
-  }
-#elif defined(ARDUINO_ENC_COUNTER)
-  volatile long left_enc_pos = 0L;
-  volatile long right_enc_pos = 0L;
-  static const int8_t ENC_STATES [] = {0,1,-1,0,-1,0,0,1,1,0,0,-1,0,-1,1,0};  //encoder lookup table
-    
-  /* Interrupt routine for LEFT encoder, taking care of actual counting */
-  ISR (PCINT2_vect){
-  	static uint8_t enc_last=0;
-        
-	enc_last <<=2; //shift previous state two places
-	enc_last |= (PIND & (3 << 2)) >> 2; //read the current state into lowest 2 bits
-  
-  	left_enc_pos += ENC_STATES[(enc_last & 0x0f)];
-  }
-  
-  /* Interrupt routine for RIGHT encoder, taking care of actual counting */
-  ISR (PCINT1_vect){
-        static uint8_t enc_last=0;
-          	
-	enc_last <<=2; //shift previous state two places
-	enc_last |= (PINC & (3 << 4)) >> 4; //read the current state into lowest 2 bits
-  
-  	right_enc_pos += ENC_STATES[(enc_last & 0x0f)];
-  }
-  
-  /* Wrap the encoder reading function */
-  long readEncoder(int i) {
-    if (i == LEFT) return left_enc_pos;
-    else return right_enc_pos;
-  }
+// =====================
+// ISR FUNCTIONS
+// =====================
+void IRAM_ATTR encoderISR1() {
+  portENTER_CRITICAL_ISR(&mux1);
+  pos1 += (digitalRead(ENCB1) ? 1 : -1);
+  portEXIT_CRITICAL_ISR(&mux1);
+}
 
-  /* Wrap the encoder reset function */
-  void resetEncoder(int i) {
-    if (i == LEFT){
-      left_enc_pos=0L;
-      return;
-    } else { 
-      right_enc_pos=0L;
-      return;
-    }
-  }
-#else
-  #error A encoder driver must be selected!
-#endif
+void IRAM_ATTR encoderISR2() {
+  portENTER_CRITICAL_ISR(&mux2);
+  pos2 += (digitalRead(ENCB2) ? 1 : -1);
+  portEXIT_CRITICAL_ISR(&mux2);
+}
 
-/* Wrap the encoder reset function */
+void IRAM_ATTR encoderISR3() {
+  portENTER_CRITICAL_ISR(&mux3);
+  pos3 += (digitalRead(ENCB3) ? 1 : -1);
+  portEXIT_CRITICAL_ISR(&mux3);
+}
+
+void IRAM_ATTR encoderISR4() {
+  portENTER_CRITICAL_ISR(&mux4);
+  pos4 += (digitalRead(ENCB4) ? 1 : -1);
+  portEXIT_CRITICAL_ISR(&mux4);
+}
+
+// =====================
+// Initialize all encoders
+// =====================
+void initEncoders() {
+  pinMode(ENCA1, INPUT); pinMode(ENCB1, INPUT);
+  pinMode(ENCA2, INPUT); pinMode(ENCB2, INPUT);
+  pinMode(ENCA3, INPUT); pinMode(ENCB3, INPUT);
+  pinMode(ENCA4, INPUT); pinMode(ENCB4, INPUT);
+
+  attachInterrupt(digitalPinToInterrupt(ENCA1), encoderISR1, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENCA2), encoderISR2, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENCA3), encoderISR3, RISING);
+  attachInterrupt(digitalPinToInterrupt(ENCA4), encoderISR4, RISING);
+}
+
+// =====================
+// ROS wrapper functions
+// =====================
+long readEncoder(int i) {
+  long val = 0;
+
+  switch (i) {
+    case ENC_M1:
+      portENTER_CRITICAL(&mux1);
+      val = pos1;
+      portEXIT_CRITICAL(&mux1);
+      break;
+
+    case ENC_M2:
+      portENTER_CRITICAL(&mux2);
+      val = pos2;
+      portEXIT_CRITICAL(&mux2);
+      break;
+
+    case ENC_M3:
+      portENTER_CRITICAL(&mux3);
+      val = pos3;
+      portEXIT_CRITICAL(&mux3);
+      break;
+
+    case ENC_M4:
+      portENTER_CRITICAL(&mux4);
+      val = pos4;
+      portEXIT_CRITICAL(&mux4);
+      break;
+  }
+  return val;
+}
+
+void resetEncoder(int i) {
+  switch (i) {
+    case ENC_M1:
+      portENTER_CRITICAL(&mux1); pos1 = 0; portEXIT_CRITICAL(&mux1);
+      break;
+
+    case ENC_M2:
+      portENTER_CRITICAL(&mux2); pos2 = 0; portEXIT_CRITICAL(&mux2);
+      break;
+
+    case ENC_M3:
+      portENTER_CRITICAL(&mux3); pos3 = 0; portEXIT_CRITICAL(&mux3);
+      break;
+
+    case ENC_M4:
+      portENTER_CRITICAL(&mux4); pos4 = 0; portEXIT_CRITICAL(&mux4);
+      break;
+  }
+}
+
 void resetEncoders() {
-  resetEncoder(LEFT);
-  resetEncoder(RIGHT);
+  resetEncoder(ENC_M1);
+  resetEncoder(ENC_M2);
+  resetEncoder(ENC_M3);
+  resetEncoder(ENC_M4);
 }
 
 #endif
-
