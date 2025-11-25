@@ -179,8 +179,8 @@ void resetPID() {
  */
 float computePID(SetPointInfo * p, float dt) {
   // Calculate raw velocity from encoder change
-  float raw = (p->Encoder - p->vPrev) / dt / CPR * 60.0;
-  p->vPrev = p->Encoder;
+  float raw = (p->Encoder - p->PrevEnc) / dt / CPR * 60.0;
+  p->PrevEnc = p->Encoder;
   
   // Apply low-pass filter for smoother velocity estimation
   p->vFilt = 0.854 * p->vFilt + 0.073 * raw + 0.073 * p->prevRaw;

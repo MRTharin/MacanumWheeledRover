@@ -13,38 +13,46 @@ BTS7960 motor4(EN_DUMMY, EN_DUMMY, M4_LPWM, M4_RPWM);
 // Initialize Motors
 // ============================================================
 void initMotorController() {
-  motor1.Enable();
-  motor2.Enable();
-  motor3.Enable();
-  motor4.Enable();
+  // Enable all motors (library will handle the dummy EN pins gracefully)
+  // motor1.Enable();
+  // motor2.Enable();
+  // motor3.Enable();
+  // motor4.Enable();
+  
+  Serial.println("Motor controller initialized with BTS7960 library");
 }
 
 // ============================================================
 // Set speed for one motor
-// Index: 1=FL, 2=FR, 3=RL, 4=RR
+// Index: 0=M1(FL), 1=M2(FR), 2=M3(RL), 3=M4(RR)
 // ============================================================
 void setMotorSpeed(int motorIndex, int spd) {
   BTS7960 *m;
-
+  
   switch (motorIndex) {
-    case 1: m = &motor1; break;
-    case 2: m = &motor2; break;
-    case 3: m = &motor3; break;
-    case 4: m = &motor4; break;
-    default: return;
+    case 0: m = &motor1; break;  // Motor 1 (Front Left)
+    case 1: m = &motor2; break;  // Motor 2 (Front Right)
+    case 2: m = &motor3; break;  // Motor 3 (Rear Left)
+    case 3: m = &motor4; break;  // Motor 4 (Rear Right)
+    default: 
+      Serial.print("ERROR: Invalid motor index: ");
+      Serial.println(motorIndex);
+      return;
   }
-
+  
+  // Apply deadzone and constrain PWM
   int pwm = constrain(abs(spd), 0, 255);
-  if (pwm > 0 && pwm < 80) pwm = 80;  // your deadzone fix
-
+  if (pwm > 0 && pwm < 80) pwm = 80;  // Deadzone fix
+  
+  // Set motor direction and speed
   if (abs(spd) < 5) {
     m->Stop();
   } 
   else if (spd > 5) {
-    m->TurnRight(pwm);
+    m->TurnRight(pwm);  // Forward
   } 
-  else if (spd < -5) {
-    m->TurnLeft(pwm);
+  else { // spd < -5
+    m->TurnLeft(pwm);   // Reverse
   }
 }
 
@@ -52,8 +60,8 @@ void setMotorSpeed(int motorIndex, int spd) {
 // Set all 4 motor speeds
 // ============================================================
 void setMotorSpeeds(int s1, int s2, int s3, int s4) {
-  setMotorSpeed(1, s1);
-  setMotorSpeed(2, s2);
-  setMotorSpeed(3, s3);
-  setMotorSpeed(4, s4);
+  setMotorSpeed(0, s1);  // Motor 1
+  setMotorSpeed(1, s2);  // Motor 2
+  setMotorSpeed(2, s3);  // Motor 3
+  setMotorSpeed(3, s4);  // Motor 4
 }

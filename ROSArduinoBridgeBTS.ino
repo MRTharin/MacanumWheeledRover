@@ -1,16 +1,6 @@
 /*********************************************************************
  *  ROSArduinoBridge - ESP32-S3 + BTS7960 4-Motor Version
- 
-    Enhanced with:
-    - 4 independent motor control
-    - Advanced PID with velocity filtering
-    - EEPROM PID parameter storage
-    - Improved encoder handling
-    
-    Based on the Pi Robot Project: http://www.pirobot.org
-    
-    Software License Agreement (BSD License)
-    Copyright (c) 2012, Patrick Goebel.
+ *  WITH DEBUG OUTPUT
  *********************************************************************/
 
 #define USE_BASE      // Enable the base controller code
@@ -58,7 +48,7 @@
 
 // A pair of variables to help parse serial commands
 int arg = 0;
-int index = 0;
+int argIndex = 0;  // CHANGED from 'index' to 'argIndex'
 
 // Variable to hold an input character
 char chr;
@@ -90,7 +80,7 @@ void resetCommand() {
   arg3 = 0;
   arg4 = 0;
   arg = 0;
-  index = 0;
+  argIndex = 0;  // CHANGED
 }
 
 /* Run a command.  Commands are defined in commands.h */
@@ -160,14 +150,25 @@ int runCommand() {
     /* Reset the auto stop timer */
     lastMotorCommand = millis();
     
+    Serial.print("DEBUG: Received speeds - M1:");
+    Serial.print(arg1);
+    Serial.print(" M2:");
+    Serial.print(arg2);
+    Serial.print(" M3:");
+    Serial.print(arg3);
+    Serial.print(" M4:");
+    Serial.println(arg4);
+    
     // If all speeds are zero, stop and reset
     if (arg1 == 0 && arg2 == 0 && arg3 == 0 && arg4 == 0) {
       setMotorSpeeds(0, 0, 0, 0);
       resetPID();
       moving = 0;
+      Serial.println("DEBUG: All motors stopped");
     }
     else {
       moving = 1;
+      Serial.println("DEBUG: Moving flag set to 1");
     }
     
     // Set target ticks per frame for each motor
@@ -175,6 +176,15 @@ int runCommand() {
     motor2PID.TargetTicksPerFrame = arg2;
     motor3PID.TargetTicksPerFrame = arg3;
     motor4PID.TargetTicksPerFrame = arg4;
+    
+    Serial.print("DEBUG: Targets set - M1:");
+    Serial.print(motor1PID.TargetTicksPerFrame);
+    Serial.print(" M2:");
+    Serial.print(motor2PID.TargetTicksPerFrame);
+    Serial.print(" M3:");
+    Serial.print(motor3PID.TargetTicksPerFrame);
+    Serial.print(" M4:");
+    Serial.println(motor4PID.TargetTicksPerFrame);
     
     Serial.println("OK"); 
     break;
@@ -184,6 +194,16 @@ int runCommand() {
     lastMotorCommand = millis();
     resetPID();
     moving = 0; // Disable PID temporarily
+    
+    Serial.print("DEBUG: Raw PWM - M1:");
+    Serial.print(arg1);
+    Serial.print(" M2:");
+    Serial.print(arg2);
+    Serial.print(" M3:");
+    Serial.print(arg3);
+    Serial.print(" M4:");
+    Serial.println(arg4);
+    
     setMotorSpeeds(arg1, arg2, arg3, arg4);
     Serial.println("OK"); 
     break;
@@ -192,7 +212,7 @@ int runCommand() {
     // Format: u motor:Kp:Ki:Kd
     // motor = 0-3 for motor1-4, or 9 for all motors
     i = 0;
-    while ((str = strtok_r(p, ":", &p)) != '\0') {
+    while ((str = strtok_r(p, ":", &p)) != NULL) {  // CHANGED '\0' to NULL
       pid_args[i] = atof(str);
       i++;
       if (i >= 4) break;
@@ -200,6 +220,15 @@ int runCommand() {
     
     if (i >= 4) {
       int motorIndex = (int)pid_args[0];
+      
+      Serial.print("DEBUG: Updating PID for motor ");
+      Serial.print(motorIndex);
+      Serial.print(" - Kp:");
+      Serial.print(pid_args[1]);
+      Serial.print(" Ki:");
+      Serial.print(pid_args[2]);
+      Serial.print(" Kd:");
+      Serial.println(pid_args[3]);
       
       if (motorIndex == 0 || motorIndex == 9) {
         motor1PID.Kp = pid_args[1];
@@ -246,7 +275,6 @@ int runCommand() {
       Serial.print(motor1PID.Ki); Serial.print(":");
       Serial.println(motor1PID.Kd);
     }
-
     if (arg1 == 1 || arg1 == 9) {
       Serial.print("M2: ");
       Serial.print(motor2PID.Kp); Serial.print(":");
@@ -277,19 +305,41 @@ int runCommand() {
 /* Setup function--runs once at startup. */
 void setup() {
   Serial.begin(BAUDRATE);
+  delay(1000); // Give serial time to initialize
+  
+  Serial.println("\n\n=== ESP32-S3 4-Motor Controller ===");
+  Serial.println("Initializing...");
   
   // Initialize the motor controller if used
 #ifdef USE_BASE
+  Serial.println("Initializing encoders...");
   initEncoders();
+  
+  Serial.println("Initializing motors...");
   initMotorController();
-  loadPID();  // Load PID parameters from EEPROM
+  
+  Serial.println("Loading PID from EEPROM...");
+  loadPID();
+  
+  Serial.println("Resetting PID...");
   resetPID();
   
-  Serial.println("ESP32-S3 4-Motor Controller Ready");
+  Serial.println("\n=== Initialization Complete ===");
   Serial.print("Baudrate: ");
   Serial.println(BAUDRATE);
+  Serial.print("PID Rate: ");
+  Serial.print(PID_RATE);
+  Serial.println(" Hz");
+  Serial.println("\nTest encoders by sending: e");
+  Serial.println("Test motors with raw PWM: o 100 100 100 100");
+  Serial.println("Move with PID: m 100 100 100 100");
+  Serial.println("===========================\n");
 #endif
 }
+
+// Debug counter
+unsigned long debugCounter = 0;
+unsigned long lastDebugTime = 0;
 
 /* Enter the main loop.  Read and parse input from the serial port
    and run any valid commands. Run a PID calculation at the target
@@ -303,10 +353,10 @@ void loop() {
 
     // Terminate a command with a CR
     if (chr == 13) {
-      if (arg == 1) argv1[index] = NULL;
-      else if (arg == 2) argv2[index] = NULL;
-      else if (arg == 3) argv3[index] = NULL;
-      else if (arg == 4) argv4[index] = NULL;
+      if (arg == 1) argv1[argIndex] = NULL;  // CHANGED
+      else if (arg == 2) argv2[argIndex] = NULL;  // CHANGED
+      else if (arg == 3) argv3[argIndex] = NULL;  // CHANGED
+      else if (arg == 4) argv4[argIndex] = NULL;  // CHANGED
       runCommand();
       resetCommand();
     }
@@ -315,19 +365,19 @@ void loop() {
       // Step through the arguments
       if (arg == 0) arg = 1;
       else if (arg == 1) {
-        argv1[index] = NULL;
+        argv1[argIndex] = NULL;  // CHANGED
         arg = 2;
-        index = 0;
+        argIndex = 0;  // CHANGED
       }
       else if (arg == 2) {
-        argv2[index] = NULL;
+        argv2[argIndex] = NULL;  // CHANGED
         arg = 3;
-        index = 0;
+        argIndex = 0;  // CHANGED
       }
       else if (arg == 3) {
-        argv3[index] = NULL;
+        argv3[argIndex] = NULL;  // CHANGED
         arg = 4;
-        index = 0;
+        argIndex = 0;  // CHANGED
       }
       continue;
     }
@@ -337,20 +387,20 @@ void loop() {
         cmd = chr;
       }
       else if (arg == 1) {
-        argv1[index] = chr;
-        index++;
+        argv1[argIndex] = chr;  // CHANGED
+        argIndex++;  // CHANGED
       }
       else if (arg == 2) {
-        argv2[index] = chr;
-        index++;
+        argv2[argIndex] = chr;  // CHANGED
+        argIndex++;  // CHANGED
       }
       else if (arg == 3) {
-        argv3[index] = chr;
-        index++;
+        argv3[argIndex] = chr;  // CHANGED
+        argIndex++;  // CHANGED
       }
       else if (arg == 4) {
-        argv4[index] = chr;
-        index++;
+        argv4[argIndex] = chr;  // CHANGED
+        argIndex++;  // CHANGED
       }
     }
   }
@@ -360,6 +410,37 @@ void loop() {
   if (millis() > nextPID) {
     updatePID();
     nextPID += PID_INTERVAL;
+    debugCounter++;
+    
+    // Print debug info every 2 seconds if moving
+    if (moving && (millis() - lastDebugTime > 2000)) {
+      lastDebugTime = millis();
+      Serial.print("DEBUG PID: Enc[");
+      Serial.print(motor1PID.Encoder);
+      Serial.print(",");
+      Serial.print(motor2PID.Encoder);
+      Serial.print(",");
+      Serial.print(motor3PID.Encoder);
+      Serial.print(",");
+      Serial.print(motor4PID.Encoder);
+      Serial.print("] Out[");
+      Serial.print(motor1PID.output);
+      Serial.print(",");
+      Serial.print(motor2PID.output);
+      Serial.print(",");
+      Serial.print(motor3PID.output);
+      Serial.print(",");
+      Serial.print(motor4PID.output);
+      Serial.print("] vFilt[");
+      Serial.print(motor1PID.vFilt);
+      Serial.print(",");
+      Serial.print(motor2PID.vFilt);
+      Serial.print(",");
+      Serial.print(motor3PID.vFilt);
+      Serial.print(",");
+      Serial.print(motor4PID.vFilt);
+      Serial.println("]");
+    }
   }
   
   // Check to see if we have exceeded the auto-stop interval
